@@ -5,10 +5,6 @@ on:
     branches: [main, master]
   pull_request:
     branches: [main, master]
-  issue_comment:
-    types: [created]
-  pull_request_review_comment:
-    types: [created]
 
 jobs:
   # ── Server ──────────────────────────────────────────────────────────────
@@ -56,12 +52,28 @@ jobs:
         run: npm ci
 
       - name: Check syntax
+        id: syntax
         working-directory: server
-        run: node --check server.js
+        run: node --check server.js 2>&1 | tee /tmp/server-syntax.log
+        continue-on-error: true
 
       - name: Run tests
+        id: tests
         working-directory: server
-        run: npm test --if-present
+        run: npm test --if-present 2>&1 | tee /tmp/server-tests.log
+        continue-on-error: true
+
+      - name: Upload error logs
+        if: steps.syntax.outcome == 'failure' || steps.tests.outcome == 'failure'
+        uses: actions/upload-artifact@v4
+        with:
+          name: server-error-logs
+          path: /tmp/server-*.log
+          retention-days: 1
+
+      - name: Fail if any step failed
+        if: steps.syntax.outcome == 'failure' || steps.tests.outcome == 'failure'
+        run: exit 1
 
   # ── Client ──────────────────────────────────────────────────────────────
   client:
@@ -82,25 +94,39 @@ jobs:
         run: npm ci
 
       - name: Build
+        id: build
         working-directory: client
         env:
-          CI: false        # treat warnings as warnings, not errors
+          CI: false
           REACT_APP_API_URL: http://localhost:5001
-        run: npm run build
+        run: npm run build 2>&1 | tee /tmp/client-build.log
+        continue-on-error: true
 
       - name: Run tests
+        id: tests
         working-directory: client
-        run: npm test --if-present -- --watchAll=false --passWithNoTests
+        run: npm test --if-present -- --watchAll=false --passWithNoTests 2>&1 | tee /tmp/client-tests.log
+        continue-on-error: true
 
-  # ── Claude Code Review ──────────────────────────────────────────────────
-  claude:
-    name: Claude Code Review
+      - name: Upload error logs
+        if: steps.build.outcome == 'failure' || steps.tests.outcome == 'failure'
+        uses: actions/upload-artifact@v4
+        with:
+          name: client-error-logs
+          path: /tmp/client-*.log
+          retention-days: 1
+
+      - name: Fail if any step failed
+        if: steps.build.outcome == 'failure' || steps.tests.outcome == 'failure'
+        run: exit 1
+
+  # ── Claude Error Analysis ────────────────────────────────────────────────
+  claude-analysis:
+    name: Claude Error Analysis
     runs-on: ubuntu-latest
-    # Only run on PRs or when someone comments @claude on a PR
-    if: |
-      github.event_name == 'pull_request' ||
-      (github.event_name == 'issue_comment' && contains(github.event.comment.body, '@claude')) ||
-      (github.event_name == 'pull_request_review_comment' && contains(github.event.comment.body, '@claude'))
+    needs: [server, client]
+    # Only run when one of the above jobs failed
+    if: always() && (needs.server.result == 'failure' || needs.client.result == 'failure')
     permissions:
       contents: read
       pull-requests: write
@@ -108,18 +134,42 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
+
+      - name: Download server logs
+        uses: actions/download-artifact@v4
         with:
-          fetch-depth: 1
+          name: server-error-logs
+          path: /tmp/logs
+        continue-on-error: true
+
+      - name: Download client logs
+        uses: actions/download-artifact@v4
+        with:
+          name: client-error-logs
+          path: /tmp/logs
+        continue-on-error: true
+
+      - name: Prepare error summary
+        run: |
+          echo "## CI Failure Summary" > /tmp/logs/context.md
+          echo "- Server job: ${{ needs.server.result }}" >> /tmp/logs/context.md
+          echo "- Client job: ${{ needs.client.result }}" >> /tmp/logs/context.md
+          echo "" >> /tmp/logs/context.md
+          for f in /tmp/logs/*.log; do
+            echo "### $(basename $f)" >> /tmp/logs/context.md
+            cat "$f" >> /tmp/logs/context.md
+            echo "" >> /tmp/logs/context.md
+          done
 
       - uses: anthropics/claude-code-action@v1
         with:
           anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
-          # On PRs: automated security + quality review capped at 3 turns / $2
-          # On @claude comments: respond to the specific request
           prompt: |
-            Review the changed files in this pull request for:
-            - Security vulnerabilities (injection, auth flaws, exposed secrets)
-            - Logic errors in the authentication flow
-            - Missing input validation
-            Post a concise summary as a PR comment. Be direct, skip praise.
+            A CI pipeline failed. Read the error logs at /tmp/logs/ and provide:
+            1. Which job failed (server or client) and which step (syntax check, tests, build)
+            2. The exact error message
+            3. The most likely cause
+            4. A concrete fix
+
+            Be direct and concise. No praise, no filler. Post as a comment on this PR or commit.
           claude_args: "--max-turns 3 --allowedTools 'Read' --model claude-haiku-4-5 --bare"
