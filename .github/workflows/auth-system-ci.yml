@@ -135,12 +135,8 @@ jobs:
     name: Claude Error Analysis
     runs-on: ubuntu-latest
     needs: [server, client]
-    # Only runs on pull_request events (claude-code-action doesn't support push)
-    # and only when one of the above jobs failed
-    if: |
-      always() &&
-      github.event_name == 'pull_request' &&
-      (needs.server.result == 'failure' || needs.client.result == 'failure')
+    # Runs on both push and pull_request when a job fails
+    if: always() && (needs.server.result == 'failure' || needs.client.result == 'failure')
     permissions:
       contents: read
       pull-requests: write
@@ -163,7 +159,7 @@ jobs:
           path: /tmp/logs
         continue-on-error: true
 
-      - name: Prepare error summary
+      - name: Prepare error context
         run: |
           mkdir -p /tmp/logs
           echo "## CI Failure Summary" > /tmp/logs/context.md
@@ -171,20 +167,61 @@ jobs:
           echo "- Client job: ${{ needs.client.result }}" >> /tmp/logs/context.md
           echo "" >> /tmp/logs/context.md
           for f in /tmp/logs/*.log; do
+            [ -f "$f" ] || continue
             echo "### $(basename $f)" >> /tmp/logs/context.md
             cat "$f" >> /tmp/logs/context.md
             echo "" >> /tmp/logs/context.md
           done
 
-      - uses: anthropics/claude-code-action@v1
-        with:
-          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
-          prompt: |
-            A CI pipeline failed. Read the error logs at /tmp/logs/ and provide:
-            1. Which job failed (server or client) and which step (syntax check, tests, build)
-            2. The exact error message
-            3. The most likely cause
-            4. A concrete fix
+      - name: Install Claude CLI
+        run: npm install -g @anthropic-ai/claude-code
 
-            Be direct and concise. No praise, no filler. Post as a comment on this PR or commit.
-          claude_args: "--max-turns 3 --allowedTools 'Read' --model claude-haiku-4-5 --bare"
+      - name: Run Claude analysis
+        id: claude
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          CLAUDE_CODE_DISABLE_TELEMETRY: 1
+        run: |
+          ANALYSIS=$(claude --dangerously-skip-permissions \
+            --bare \
+            --max-turns 3 \
+            --allowedTools "Read" \
+            --model claude-haiku-4-5 \
+            --output-format text \
+            -p "$(cat <<'PROMPT'
+A CI pipeline for an auth system failed. Read the error logs at /tmp/logs/
+and provide:
+1. Which job failed (server or client) and which step
+2. The exact error message
+3. The most likely root cause
+4. A concrete fix (include file and line if relevant)
+Be direct. No filler.
+PROMPT
+          )")
+          echo "analysis<<EOF" >> $GITHUB_OUTPUT
+          echo "$ANALYSIS" >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+
+      - name: Post comment on PR
+        if: github.event_name == 'pull_request'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: `## 🔍 Claude CI Analysis\n\n${{ steps.claude.outputs.analysis }}`
+            })
+
+      - name: Post comment on commit
+        if: github.event_name == 'push'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            github.rest.repos.createCommitComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              commit_sha: context.sha,
+              body: `## 🔍 Claude CI Analysis\n\n${{ steps.claude.outputs.analysis }}`
+            })
