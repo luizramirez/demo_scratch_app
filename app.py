@@ -1,3 +1,8 @@
+"""
+METAR Reader — Flask web application that fetches live METAR weather reports
+from aviationweather.gov and translates them into plain English.
+"""
+
 from flask import Flask, render_template, jsonify
 import requests
 from datetime import datetime, timezone
@@ -6,6 +11,7 @@ app = Flask(__name__)
 
 METAR_API = "https://aviationweather.gov/api/data/metar"
 
+# 16-point compass rose, each segment covers 22.5 degrees
 WIND_DIRS = [
     "North", "North-Northeast", "Northeast", "East-Northeast",
     "East", "East-Southeast", "Southeast", "South-Southeast",
@@ -24,6 +30,7 @@ CLOUD_DESCRIPTIONS = {
     "VV": "sky obscured",
 }
 
+# Standard METAR present weather codes (WMO and FAA)
 WEATHER_CODES = {
     "RA": "rain", "SN": "snow", "DZ": "drizzle", "GR": "hail",
     "GS": "small hail", "IC": "ice crystals", "PL": "ice pellets",
@@ -40,6 +47,15 @@ WEATHER_CODES = {
 
 
 def degrees_to_compass(degrees):
+    """Convert a wind direction in degrees to a compass direction string.
+
+    Args:
+        degrees: Wind direction in degrees (0–360), or None for variable winds.
+
+    Returns:
+        A compass direction string such as "North" or "Southwest",
+        or "variable" if degrees is None.
+    """
     if degrees is None:
         return "variable"
     idx = round(degrees / 22.5) % 16
@@ -47,18 +63,45 @@ def degrees_to_compass(degrees):
 
 
 def celsius_to_fahrenheit(c):
+    """Convert a Celsius temperature to Fahrenheit, rounded to the nearest degree.
+
+    Args:
+        c: Temperature in Celsius, or None.
+
+    Returns:
+        Temperature in Fahrenheit as an integer, or None if input is None.
+    """
     if c is None:
         return None
     return round(c * 9 / 5 + 32)
 
 
 def knots_to_mph(knots):
+    """Convert a wind speed in knots to miles per hour, rounded to the nearest integer.
+
+    Args:
+        knots: Wind speed in knots, or None.
+
+    Returns:
+        Wind speed in mph as an integer, or None if input is None.
+    """
     if knots is None:
         return None
     return round(knots * 1.15078)
 
 
 def decode_visibility(vis_str):
+    """Convert a raw METAR visibility value to a human-readable string.
+
+    Visibility in METARs is reported in statute miles. A trailing "+"
+    means the actual visibility exceeds the reported value (e.g. "10+").
+
+    Args:
+        vis_str: Visibility string from the API (e.g. "10+", "2.5"), or None.
+
+    Returns:
+        A descriptive string such as "more than 10 miles" or "2.5 miles (reduced)".
+    """
     if vis_str is None:
         return "unknown"
     if str(vis_str).endswith("+"):
@@ -80,6 +123,16 @@ def decode_visibility(vis_str):
 
 
 def decode_clouds(clouds, wx_string):
+    """Convert a list of cloud layer objects into a readable sky condition string.
+
+    Args:
+        clouds: List of dicts with "cover" (e.g. "FEW") and "base" (feet AGL).
+        wx_string: Raw weather string (unused here, reserved for future use).
+
+    Returns:
+        A string describing all cloud layers, e.g.
+        "a few clouds at 2,500 ft; scattered clouds at 10,000 ft".
+    """
     if not clouds:
         return "clear skies"
     parts = []
@@ -95,6 +148,18 @@ def decode_clouds(clouds, wx_string):
 
 
 def decode_weather(wx_string):
+    """Translate a METAR present-weather string into plain English.
+
+    Scans the raw weather string for known METAR codes and returns
+    a comma-separated list of matching descriptions.
+
+    Args:
+        wx_string: Raw present-weather string (e.g. "TSRA", "-SN"), or None.
+
+    Returns:
+        A readable string such as "thunderstorm, rain", the original
+        wx_string if no codes matched, or None if wx_string is falsy.
+    """
     if not wx_string:
         return None
     result = []
@@ -111,6 +176,16 @@ def decode_weather(wx_string):
 
 
 def overall_condition(clouds, wx_string, vis_str):
+    """Derive a one-phrase sky condition summary from clouds and weather codes.
+
+    Args:
+        clouds: List of cloud layer dicts (see decode_clouds).
+        wx_string: Raw present-weather string, or None.
+        vis_str: Visibility string (currently unused, reserved for future use).
+
+    Returns:
+        A short condition label such as "Clear", "Partly cloudy", or "Overcast".
+    """
     wx = decode_weather(wx_string)
     if wx:
         return wx.capitalize()
@@ -131,6 +206,15 @@ def overall_condition(clouds, wx_string, vis_str):
 
 
 def condition_emoji(condition, wx_string):
+    """Pick a weather emoji that best represents the current conditions.
+
+    Args:
+        condition: Condition label returned by overall_condition().
+        wx_string: Raw present-weather string, or None.
+
+    Returns:
+        A single emoji string.
+    """
     wx = (wx_string or "").upper()
     cond = condition.lower()
     if "thunder" in cond or "TS" in wx:
@@ -155,6 +239,14 @@ def condition_emoji(condition, wx_string):
 
 
 def format_time(obs_time):
+    """Format a Unix timestamp as a readable UTC date-time string.
+
+    Args:
+        obs_time: Unix timestamp (integer), or None.
+
+    Returns:
+        A string like "April 18, 2026 at 12:51z (UTC)", or "Unknown time".
+    """
     try:
         dt = datetime.fromtimestamp(obs_time, tz=timezone.utc)
         return dt.strftime("%B %d, %Y at %H:%Mz (UTC)")
@@ -163,6 +255,19 @@ def format_time(obs_time):
 
 
 def build_friendly_summary(data):
+    """Build a complete plain-English weather summary from a raw METAR data dict.
+
+    Converts all numeric and coded fields into human-readable values and
+    assembles them into a structured dict suitable for JSON serialization.
+
+    Args:
+        data: A single METAR record dict as returned by aviationweather.gov.
+
+    Returns:
+        A dict with keys: airport_name, icao, observed, emoji, condition,
+        temperature, dewpoint, wind, visibility, clouds, weather, altimeter,
+        raw, headline.
+    """
     temp_c = data.get("temp")
     dewp_c = data.get("dewp")
     wdir = data.get("wdir")
@@ -190,10 +295,6 @@ def build_friendly_summary(data):
         if wgst_mph:
             wind_desc += f", gusting to {wgst_mph} mph"
 
-    cloud_desc = decode_clouds(clouds, wx_string)
-    vis_desc = decode_visibility(visib)
-    wx_desc = decode_weather(wx_string)
-
     summary = {
         "airport_name": name,
         "icao": icao,
@@ -203,17 +304,30 @@ def build_friendly_summary(data):
         "temperature": f"{temp_f}°F / {temp_c}°C" if temp_f is not None else "Unknown",
         "dewpoint": f"{dewp_f}°F / {dewp_c}°C" if dewp_f is not None else "Unknown",
         "wind": wind_desc,
-        "visibility": vis_desc,
-        "clouds": cloud_desc,
-        "weather": wx_desc,
+        "visibility": decode_visibility(visib),
+        "clouds": decode_clouds(clouds, wx_string),
+        "weather": decode_weather(wx_string),
         "altimeter": f"{altim:.2f} inHg" if altim else "Unknown",
         "raw": data.get("rawOb", ""),
-        "headline": build_headline(condition, temp_f, wspd_mph, compass, wx_desc),
+        "headline": build_headline(condition, temp_f, wspd_mph, compass, decode_weather(wx_string)),
     }
     return summary
 
 
 def build_headline(condition, temp_f, wspd_mph, compass, wx_desc):
+    """Build a one-line weather summary sentence for display at the top of the card.
+
+    Args:
+        condition: Short condition label (e.g. "Partly cloudy").
+        temp_f: Temperature in Fahrenheit, or None.
+        wspd_mph: Wind speed in mph, or None.
+        compass: Compass direction string (e.g. "Southwest").
+        wx_desc: Decoded present-weather string, or None.
+
+    Returns:
+        A comma-separated summary string such as
+        "Partly cloudy, 72°F, winds 10 mph from the Southwest".
+    """
     parts = []
     if wx_desc:
         parts.append(wx_desc.capitalize())
@@ -230,11 +344,18 @@ def build_headline(condition, temp_f, wspd_mph, compass, wx_desc):
 
 @app.route("/")
 def index():
+    """Serve the main page."""
     return render_template("index.html")
 
 
 @app.route("/api/metar/<code>")
 def get_metar(code):
+    """Fetch and decode a METAR report for the given airport code.
+
+    Accepts 2–4 letter ICAO or IATA codes (e.g. KJFK, LAX).
+    Returns a JSON object with plain-English weather fields on success,
+    or a JSON error object with an appropriate HTTP status code on failure.
+    """
     code = code.upper().strip()
     if not (2 <= len(code) <= 4 and code.isalpha()):
         return jsonify({
@@ -263,8 +384,7 @@ def get_metar(code):
             "error": f"No METAR data found for '{code}'. Check the airport code and try again."
         }), 404
 
-    summary = build_friendly_summary(results[0])
-    return jsonify(summary)
+    return jsonify(build_friendly_summary(results[0]))
 
 
 if __name__ == "__main__":
