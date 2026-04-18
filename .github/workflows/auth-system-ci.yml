@@ -193,13 +193,17 @@ jobs:
             Be direct. No filler.
         run: |
           echo "Claude version: $(claude --version)"
-          ANALYSIS=$(claude --dangerously-skip-permissions \
+          EXIT_CODE=0
+          ANALYSIS=$(claude \
+            --dangerously-skip-permissions \
             --bare \
             --max-turns 3 \
             --allowedTools Read \
             --model claude-haiku-4-5-20251001 \
-            --output-format text \
-            -p "$CLAUDE_PROMPT" 2>&1)
+            -p "$CLAUDE_PROMPT" 2>&1) || EXIT_CODE=$?
+          if [ $EXIT_CODE -ne 0 ]; then
+            ANALYSIS="Claude CLI failed (exit code: $EXIT_CODE). Raw output: $ANALYSIS"
+          fi
           echo "analysis<<EOF" >> $GITHUB_OUTPUT
           echo "$ANALYSIS" >> $GITHUB_OUTPUT
           echo "EOF" >> $GITHUB_OUTPUT
