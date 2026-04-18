@@ -174,7 +174,9 @@ jobs:
           done
 
       - name: Install Claude CLI
-        run: npm install -g @anthropic-ai/claude-code
+        run: |
+          npm install -g @anthropic-ai/claude-code
+          echo "$(npm bin -g)" >> $GITHUB_PATH
 
       - name: Run Claude analysis
         id: claude
@@ -190,13 +192,14 @@ jobs:
             4. A concrete fix (include file and line if relevant).
             Be direct. No filler.
         run: |
+          echo "Claude version: $(claude --version)"
           ANALYSIS=$(claude --dangerously-skip-permissions \
             --bare \
             --max-turns 3 \
             --allowedTools Read \
             --model claude-haiku-4-5-20251001 \
             --output-format text \
-            -p "$CLAUDE_PROMPT")
+            -p "$CLAUDE_PROMPT" 2>&1)
           echo "analysis<<EOF" >> $GITHUB_OUTPUT
           echo "$ANALYSIS" >> $GITHUB_OUTPUT
           echo "EOF" >> $GITHUB_OUTPUT
