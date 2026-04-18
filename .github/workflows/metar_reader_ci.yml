@@ -5,12 +5,12 @@ on:
     branches: [main]
     paths:
       - "metar_reader/**"
-      - ".github/workflows/ci.yml"
+      - ".github/workflows/metar_reader_ci.yml"
   pull_request:
     branches: [main]
     paths:
       - "metar_reader/**"
-      - ".github/workflows/ci.yml"
+      - ".github/workflows/metar_reader_ci.yml"
 
 env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
