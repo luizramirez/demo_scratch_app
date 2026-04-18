@@ -155,6 +155,7 @@ jobs:
 
       - name: Prepare error summary
         run: |
+          mkdir -p /tmp/logs
           echo "## CI Failure Summary" > /tmp/logs/context.md
           echo "- Server job: ${{ needs.server.result }}" >> /tmp/logs/context.md
           echo "- Client job: ${{ needs.client.result }}" >> /tmp/logs/context.md
