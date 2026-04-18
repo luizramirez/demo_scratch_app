@@ -5,10 +5,12 @@ on:
     branches: [main, master]
     paths:
       - 'auth-system/**'
+      - '.github/workflows/auth-system-ci.yml'
   pull_request:
     branches: [main, master]
     paths:
       - 'auth-system/**'
+      - '.github/workflows/auth-system-ci.yml'
 
 jobs:
   # ── Server ──────────────────────────────────────────────────────────────
