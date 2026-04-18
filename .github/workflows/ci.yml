@@ -27,7 +27,49 @@ jobs:
           pip install -r requirements-dev.txt
 
       - name: Lint with flake8
-        run: flake8 app.py --max-line-length=100
+        id: lint
+        continue-on-error: true
+        run: flake8 app.py --max-line-length=100 2>&1 | tee lint-output.txt
 
       - name: Run tests
-        run: pytest tests/ -v
+        id: tests
+        continue-on-error: true
+        run: pytest tests/ -v 2>&1 | tee test-output.txt
+
+      - name: AI error analysis
+        if: steps.lint.outcome == 'failure' || steps.tests.outcome == 'failure'
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        run: |
+          npm install -g @anthropic-ai/claude-code --silent
+
+          {
+            echo "=== Lint output ==="
+            cat lint-output.txt 2>/dev/null || echo "(no lint output)"
+            echo ""
+            echo "=== Test output ==="
+            cat test-output.txt 2>/dev/null || echo "(no test output)"
+          } > combined-errors.txt
+
+          echo "::group::Claude AI diagnosis"
+          claude -p "
+          You are a CI assistant for a Flask web app called METAR Reader.
+          It fetches live airport weather data and decodes it into plain English.
+          The stack is: Python, Flask, pytest, flake8.
+
+          One or more CI steps failed. Here is the combined output:
+
+          $(cat combined-errors.txt)
+
+          Please:
+          1. Identify the root cause of each failure
+          2. Suggest the exact code change or command needed to fix it
+          3. Keep your answer concise and actionable
+          " --output-format text
+          echo "::endgroup::"
+
+      - name: Fail if lint or tests did not pass
+        if: steps.lint.outcome == 'failure' || steps.tests.outcome == 'failure'
+        run: |
+          echo "CI failed — see 'AI error analysis' step above for a suggested fix."
+          exit 1
