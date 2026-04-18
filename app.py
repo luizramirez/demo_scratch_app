@@ -1,4 +1,4 @@
-from flask import Flask, render_template, request, jsonify
+from flask import Flask, render_template, jsonify
 import requests
 from datetime import datetime, timezone
 
@@ -38,21 +38,25 @@ WEATHER_CODES = {
     "RASN": "rain and snow mix", "-": "light", "+": "heavy",
 }
 
+
 def degrees_to_compass(degrees):
     if degrees is None:
         return "variable"
     idx = round(degrees / 22.5) % 16
     return WIND_DIRS[idx]
 
+
 def celsius_to_fahrenheit(c):
     if c is None:
         return None
     return round(c * 9 / 5 + 32)
 
+
 def knots_to_mph(knots):
     if knots is None:
         return None
     return round(knots * 1.15078)
+
 
 def decode_visibility(vis_str):
     if vis_str is None:
@@ -74,6 +78,7 @@ def decode_visibility(vis_str):
     except (ValueError, TypeError):
         return str(vis_str) + " miles"
 
+
 def decode_clouds(clouds, wx_string):
     if not clouds:
         return "clear skies"
@@ -87,6 +92,7 @@ def decode_clouds(clouds, wx_string):
         else:
             parts.append(desc)
     return "; ".join(parts) if parts else "clear skies"
+
 
 def decode_weather(wx_string):
     if not wx_string:
@@ -102,6 +108,7 @@ def decode_weather(wx_string):
                 seen.append(r)
         return ", ".join(seen)
     return wx_string
+
 
 def overall_condition(clouds, wx_string, vis_str):
     wx = decode_weather(wx_string)
@@ -121,6 +128,7 @@ def overall_condition(clouds, wx_string, vis_str):
     elif top_cover == "OVC":
         return "Overcast"
     return "Mixed conditions"
+
 
 def condition_emoji(condition, wx_string):
     wx = (wx_string or "").upper()
@@ -145,12 +153,14 @@ def condition_emoji(condition, wx_string):
         return "⛅"
     return "☀️"
 
+
 def format_time(obs_time):
     try:
         dt = datetime.fromtimestamp(obs_time, tz=timezone.utc)
         return dt.strftime("%B %d, %Y at %H:%Mz (UTC)")
     except Exception:
         return "Unknown time"
+
 
 def build_friendly_summary(data):
     temp_c = data.get("temp")
@@ -202,6 +212,7 @@ def build_friendly_summary(data):
     }
     return summary
 
+
 def build_headline(condition, temp_f, wspd_mph, compass, wx_desc):
     parts = []
     if wx_desc:
@@ -226,7 +237,9 @@ def index():
 def get_metar(code):
     code = code.upper().strip()
     if not (2 <= len(code) <= 4 and code.isalpha()):
-        return jsonify({"error": "Please enter a valid 3- or 4-letter airport code (e.g. KJFK or LAX)."}), 400
+        return jsonify({
+            "error": "Please enter a valid 3- or 4-letter airport code (e.g. KJFK or LAX)."
+        }), 400
 
     try:
         resp = requests.get(
@@ -236,7 +249,7 @@ def get_metar(code):
         )
         resp.raise_for_status()
     except requests.exceptions.Timeout:
-        return jsonify({"error": "The weather service took too long to respond. Please try again."}), 504
+        return jsonify({"error": "The weather service took too long to respond. Try again."}), 504
     except requests.exceptions.RequestException as e:
         return jsonify({"error": f"Could not reach the weather service: {str(e)}"}), 502
 
