@@ -197,12 +197,12 @@ jobs:
           ANALYSIS=$(claude \
             --dangerously-skip-permissions \
             --bare \
-            --max-turns 3 \
+            --max-turns 5 \
             --allowedTools Read \
             --model claude-haiku-4-5-20251001 \
             -p "$CLAUDE_PROMPT" 2>&1) || EXIT_CODE=$?
-          if [ $EXIT_CODE -ne 0 ]; then
-            ANALYSIS="Claude CLI failed (exit code: $EXIT_CODE). Raw output: $ANALYSIS"
+          if [ -z "$ANALYSIS" ]; then
+            ANALYSIS="Claude CLI failed with no output (exit code: $EXIT_CODE)."
           fi
           echo "analysis<<EOF" >> $GITHUB_OUTPUT
           echo "$ANALYSIS" >> $GITHUB_OUTPUT
