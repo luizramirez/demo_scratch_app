@@ -1,10 +1,14 @@
-name: CI
+name: Auth System CI
 
 on:
   push:
     branches: [main, master]
   pull_request:
     branches: [main, master]
+  issue_comment:
+    types: [created]
+  pull_request_review_comment:
+    types: [created]
 
 jobs:
   # ── Server ──────────────────────────────────────────────────────────────
@@ -87,3 +91,35 @@ jobs:
       - name: Run tests
         working-directory: client
         run: npm test --if-present -- --watchAll=false --passWithNoTests
+
+  # ── Claude Code Review ──────────────────────────────────────────────────
+  claude:
+    name: Claude Code Review
+    runs-on: ubuntu-latest
+    # Only run on PRs or when someone comments @claude on a PR
+    if: |
+      github.event_name == 'pull_request' ||
+      (github.event_name == 'issue_comment' && contains(github.event.comment.body, '@claude')) ||
+      (github.event_name == 'pull_request_review_comment' && contains(github.event.comment.body, '@claude'))
+    permissions:
+      contents: read
+      pull-requests: write
+      issues: write
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - uses: anthropics/claude-code-action@v1
+        with:
+          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          # On PRs: automated security + quality review capped at 3 turns / $2
+          # On @claude comments: respond to the specific request
+          prompt: |
+            Review the changed files in this pull request for:
+            - Security vulnerabilities (injection, auth flaws, exposed secrets)
+            - Logic errors in the authentication flow
+            - Missing input validation
+            Post a concise summary as a PR comment. Be direct, skip praise.
+          claude_args: "--max-turns 3"
