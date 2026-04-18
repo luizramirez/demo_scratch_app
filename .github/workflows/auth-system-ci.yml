@@ -210,11 +210,13 @@ jobs:
 
       - name: Post comment on commit
         uses: actions/github-script@v7
+        env:
+          ANALYSIS: ${{ steps.claude.outputs.analysis }}
         with:
           script: |
             github.rest.repos.createCommitComment({
               owner: context.repo.owner,
               repo: context.repo.repo,
               commit_sha: context.sha,
-              body: `## 🔍 Claude CI Analysis\n\n${{ steps.claude.outputs.analysis }}`
+              body: `## 🔍 Claude CI Analysis\n\n${process.env.ANALYSIS}`
             })
