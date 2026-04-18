@@ -193,28 +193,15 @@ jobs:
           ANALYSIS=$(claude --dangerously-skip-permissions \
             --bare \
             --max-turns 3 \
-            --allowedTools "Read" \
-            --model claude-haiku-4-5 \
+            --allowedTools Read \
+            --model claude-haiku-4-5-20251001 \
             --output-format text \
             -p "$CLAUDE_PROMPT")
           echo "analysis<<EOF" >> $GITHUB_OUTPUT
           echo "$ANALYSIS" >> $GITHUB_OUTPUT
           echo "EOF" >> $GITHUB_OUTPUT
 
-      - name: Post comment on PR
-        if: github.event_name == 'pull_request'
-        uses: actions/github-script@v7
-        with:
-          script: |
-            github.rest.issues.createComment({
-              issue_number: context.issue.number,
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              body: `## 🔍 Claude CI Analysis\n\n${{ steps.claude.outputs.analysis }}`
-            })
-
       - name: Post comment on commit
-        if: github.event_name == 'push'
         uses: actions/github-script@v7
         with:
           script: |
