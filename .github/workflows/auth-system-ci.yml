@@ -181,6 +181,14 @@ jobs:
         env:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
           CLAUDE_CODE_DISABLE_TELEMETRY: 1
+          CLAUDE_PROMPT: >
+            A CI pipeline for an auth system failed.
+            Read the error logs at /tmp/logs/ and provide:
+            1. Which job failed (server or client) and which step.
+            2. The exact error message.
+            3. The most likely root cause.
+            4. A concrete fix (include file and line if relevant).
+            Be direct. No filler.
         run: |
           ANALYSIS=$(claude --dangerously-skip-permissions \
             --bare \
@@ -188,16 +196,7 @@ jobs:
             --allowedTools "Read" \
             --model claude-haiku-4-5 \
             --output-format text \
-            -p "$(cat <<'PROMPT'
-A CI pipeline for an auth system failed. Read the error logs at /tmp/logs/
-and provide:
-1. Which job failed (server or client) and which step
-2. The exact error message
-3. The most likely root cause
-4. A concrete fix (include file and line if relevant)
-Be direct. No filler.
-PROMPT
-          )")
+            -p "$CLAUDE_PROMPT")
           echo "analysis<<EOF" >> $GITHUB_OUTPUT
           echo "$ANALYSIS" >> $GITHUB_OUTPUT
           echo "EOF" >> $GITHUB_OUTPUT
