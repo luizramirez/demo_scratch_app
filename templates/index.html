@@ -1,0 +1,422 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>METAR Reader — Plain English Airport Weather</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      background: linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%);
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 2rem 1rem;
+      color: #e0e6f0;
+    }
+
+    header {
+      text-align: center;
+      margin-bottom: 2.5rem;
+    }
+
+    header h1 {
+      font-size: 2.4rem;
+      font-weight: 700;
+      letter-spacing: -0.5px;
+      color: #ffffff;
+    }
+
+    header p {
+      margin-top: 0.5rem;
+      font-size: 1rem;
+      color: #8ba3c7;
+    }
+
+    .search-box {
+      display: flex;
+      gap: 0.5rem;
+      width: 100%;
+      max-width: 480px;
+      margin-bottom: 2rem;
+    }
+
+    .search-box input {
+      flex: 1;
+      padding: 0.85rem 1.2rem;
+      font-size: 1.1rem;
+      border: 2px solid #2a4a7f;
+      border-radius: 12px;
+      background: rgba(255,255,255,0.07);
+      color: #ffffff;
+      outline: none;
+      text-transform: uppercase;
+      letter-spacing: 2px;
+      transition: border-color 0.2s;
+    }
+
+    .search-box input::placeholder {
+      color: #5a7aab;
+      text-transform: none;
+      letter-spacing: normal;
+    }
+
+    .search-box input:focus {
+      border-color: #4a90e2;
+    }
+
+    .search-box button {
+      padding: 0.85rem 1.5rem;
+      font-size: 1rem;
+      font-weight: 600;
+      background: #4a90e2;
+      color: white;
+      border: none;
+      border-radius: 12px;
+      cursor: pointer;
+      transition: background 0.2s, transform 0.1s;
+      white-space: nowrap;
+    }
+
+    .search-box button:hover { background: #357abd; }
+    .search-box button:active { transform: scale(0.97); }
+    .search-box button:disabled { background: #2a4a7f; cursor: not-allowed; }
+
+    .examples {
+      font-size: 0.85rem;
+      color: #5a7aab;
+      margin-bottom: 2.5rem;
+      text-align: center;
+    }
+
+    .examples span {
+      cursor: pointer;
+      color: #4a90e2;
+      margin: 0 0.3rem;
+      text-decoration: underline;
+      text-decoration-style: dotted;
+    }
+    .examples span:hover { color: #74b3f8; }
+
+    #status {
+      font-size: 1rem;
+      color: #8ba3c7;
+      min-height: 1.5rem;
+      text-align: center;
+    }
+
+    .spinner {
+      display: inline-block;
+      width: 18px; height: 18px;
+      border: 3px solid rgba(74,144,226,0.3);
+      border-top-color: #4a90e2;
+      border-radius: 50%;
+      animation: spin 0.7s linear infinite;
+      vertical-align: middle;
+      margin-right: 6px;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    #result {
+      width: 100%;
+      max-width: 640px;
+      display: none;
+    }
+
+    .card {
+      background: rgba(255,255,255,0.06);
+      border: 1px solid rgba(255,255,255,0.1);
+      border-radius: 20px;
+      padding: 2rem;
+      backdrop-filter: blur(10px);
+      box-shadow: 0 8px 32px rgba(0,0,0,0.3);
+    }
+
+    .card-header {
+      margin-bottom: 1.5rem;
+      border-bottom: 1px solid rgba(255,255,255,0.1);
+      padding-bottom: 1.2rem;
+    }
+
+    .airport-code {
+      font-size: 0.8rem;
+      font-weight: 700;
+      letter-spacing: 3px;
+      color: #4a90e2;
+      text-transform: uppercase;
+      margin-bottom: 0.2rem;
+    }
+
+    .airport-name {
+      font-size: 1.3rem;
+      font-weight: 700;
+      color: #ffffff;
+      margin-bottom: 0.3rem;
+    }
+
+    .observed-time {
+      font-size: 0.78rem;
+      color: #5a7aab;
+    }
+
+    .headline {
+      display: flex;
+      align-items: flex-start;
+      gap: 1rem;
+      margin-bottom: 1.5rem;
+    }
+
+    .headline-emoji {
+      font-size: 3.5rem;
+      line-height: 1;
+      flex-shrink: 0;
+    }
+
+    .headline-text {
+      font-size: 1.2rem;
+      font-weight: 600;
+      color: #d0e4ff;
+      line-height: 1.4;
+    }
+
+    .weather-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 1rem;
+      margin-bottom: 1.5rem;
+    }
+
+    @media (max-width: 480px) {
+      .weather-grid { grid-template-columns: 1fr; }
+    }
+
+    .weather-item {
+      background: rgba(255,255,255,0.04);
+      border: 1px solid rgba(255,255,255,0.07);
+      border-radius: 12px;
+      padding: 0.9rem 1rem;
+    }
+
+    .weather-item .label {
+      font-size: 0.72rem;
+      font-weight: 600;
+      letter-spacing: 1px;
+      color: #5a7aab;
+      text-transform: uppercase;
+      margin-bottom: 0.3rem;
+    }
+
+    .weather-item .value {
+      font-size: 0.98rem;
+      color: #d0e4ff;
+      font-weight: 500;
+    }
+
+    .weather-item.full-width {
+      grid-column: 1 / -1;
+    }
+
+    .raw-metar {
+      background: rgba(0,0,0,0.3);
+      border: 1px solid rgba(255,255,255,0.07);
+      border-radius: 10px;
+      padding: 0.8rem 1rem;
+      font-family: "SF Mono", "Fira Code", monospace;
+      font-size: 0.75rem;
+      color: #5a7aab;
+      word-break: break-all;
+      line-height: 1.5;
+    }
+
+    .raw-label {
+      font-size: 0.72rem;
+      font-weight: 600;
+      letter-spacing: 1px;
+      color: #3a5a8a;
+      text-transform: uppercase;
+      margin-bottom: 0.4rem;
+    }
+
+    .error-card {
+      background: rgba(220,53,69,0.15);
+      border: 1px solid rgba(220,53,69,0.3);
+      border-radius: 16px;
+      padding: 1.5rem;
+      color: #f5a0a8;
+      text-align: center;
+      font-size: 0.95rem;
+      line-height: 1.5;
+    }
+
+    footer {
+      margin-top: 3rem;
+      font-size: 0.78rem;
+      color: #3a5a8a;
+      text-align: center;
+    }
+    footer a { color: #4a90e2; text-decoration: none; }
+    footer a:hover { text-decoration: underline; }
+  </style>
+</head>
+<body>
+
+<header>
+  <h1>✈️ METAR Reader</h1>
+  <p>Type an airport code to get a plain-English weather report</p>
+</header>
+
+<div class="search-box">
+  <input
+    type="text"
+    id="airport-input"
+    placeholder="e.g. KJFK or LAX"
+    maxlength="4"
+    autocomplete="off"
+    autocorrect="off"
+    spellcheck="false"
+  />
+  <button id="search-btn" onclick="fetchMetar()">Check Weather</button>
+</div>
+
+<div class="examples">
+  Try: <span onclick="lookupCode('KJFK')">KJFK</span>
+  <span onclick="lookupCode('KLAX')">KLAX</span>
+  <span onclick="lookupCode('KORD')">KORD</span>
+  <span onclick="lookupCode('EGLL')">EGLL</span>
+  <span onclick="lookupCode('YSSY')">YSSY</span>
+</div>
+
+<div id="status"></div>
+
+<div id="result"></div>
+
+<footer>
+  Live data from <a href="https://aviationweather.gov" target="_blank">aviationweather.gov</a>.
+  METAR reports update every 20–60 minutes.
+</footer>
+
+<script>
+  const input = document.getElementById("airport-input");
+  const statusEl = document.getElementById("status");
+  const resultEl = document.getElementById("result");
+
+  input.addEventListener("keydown", (e) => {
+    if (e.key === "Enter") fetchMetar();
+  });
+
+  function lookupCode(code) {
+    input.value = code;
+    fetchMetar();
+  }
+
+  async function fetchMetar() {
+    const code = input.value.trim().toUpperCase();
+    if (!code) {
+      setStatus("Please enter an airport code.");
+      return;
+    }
+
+    setStatus('<span class="spinner"></span> Fetching weather data…');
+    resultEl.style.display = "none";
+    resultEl.innerHTML = "";
+    document.getElementById("search-btn").disabled = true;
+
+    try {
+      const res = await fetch(`/api/metar/${encodeURIComponent(code)}`);
+      const data = await res.json();
+
+      if (!res.ok) {
+        showError(data.error || "Something went wrong.");
+        return;
+      }
+
+      showResult(data);
+      setStatus("");
+    } catch (err) {
+      showError("Network error — please check your connection and try again.");
+    } finally {
+      document.getElementById("search-btn").disabled = false;
+    }
+  }
+
+  function setStatus(html) {
+    statusEl.innerHTML = html;
+  }
+
+  function showError(msg) {
+    resultEl.innerHTML = `<div class="error-card">⚠️ ${escHtml(msg)}</div>`;
+    resultEl.style.display = "block";
+    setStatus("");
+  }
+
+  function showResult(d) {
+    const wxRow = d.weather
+      ? `<div class="weather-item full-width">
+           <div class="label">Current Weather</div>
+           <div class="value">${escHtml(d.weather)}</div>
+         </div>`
+      : "";
+
+    resultEl.innerHTML = `
+      <div class="card">
+        <div class="card-header">
+          <div class="airport-code">${escHtml(d.icao)}</div>
+          <div class="airport-name">${escHtml(d.airport_name)}</div>
+          <div class="observed-time">Observed: ${escHtml(d.observed)}</div>
+        </div>
+
+        <div class="headline">
+          <div class="headline-emoji">${escHtml(d.emoji)}</div>
+          <div class="headline-text">${escHtml(d.headline)}</div>
+        </div>
+
+        <div class="weather-grid">
+          <div class="weather-item">
+            <div class="label">🌡 Temperature</div>
+            <div class="value">${escHtml(d.temperature)}</div>
+          </div>
+          <div class="weather-item">
+            <div class="label">💧 Dew Point</div>
+            <div class="value">${escHtml(d.dewpoint)}</div>
+          </div>
+          <div class="weather-item">
+            <div class="label">💨 Wind</div>
+            <div class="value">${escHtml(d.wind)}</div>
+          </div>
+          <div class="weather-item">
+            <div class="label">👁 Visibility</div>
+            <div class="value">${escHtml(d.visibility)}</div>
+          </div>
+          <div class="weather-item full-width">
+            <div class="label">☁️ Sky / Clouds</div>
+            <div class="value">${escHtml(d.clouds)}</div>
+          </div>
+          ${wxRow}
+          <div class="weather-item">
+            <div class="label">📊 Altimeter</div>
+            <div class="value">${escHtml(d.altimeter)}</div>
+          </div>
+        </div>
+
+        <div class="raw-label">Raw METAR</div>
+        <div class="raw-metar">${escHtml(d.raw)}</div>
+      </div>
+    `;
+    resultEl.style.display = "block";
+  }
+
+  function escHtml(str) {
+    if (!str) return "";
+    return String(str)
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;");
+  }
+</script>
+
+</body>
+</html>
