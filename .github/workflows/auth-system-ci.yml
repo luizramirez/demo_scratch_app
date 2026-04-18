@@ -58,13 +58,15 @@ jobs:
       - name: Check syntax
         id: syntax
         working-directory: auth-system/server
-        run: node --check server.js 2>&1 | tee /tmp/server-syntax.log
+        shell: bash
+        run: set -o pipefail; node --check server.js 2>&1 | tee /tmp/server-syntax.log
         continue-on-error: true
 
       - name: Run tests
         id: tests
         working-directory: auth-system/server
-        run: npm test --if-present 2>&1 | tee /tmp/server-tests.log
+        shell: bash
+        run: set -o pipefail; npm test --if-present 2>&1 | tee /tmp/server-tests.log
         continue-on-error: true
 
       - name: Upload error logs
@@ -100,16 +102,18 @@ jobs:
       - name: Build
         id: build
         working-directory: auth-system/client
+        shell: bash
         env:
           CI: false
           REACT_APP_API_URL: http://localhost:5001
-        run: npm run build 2>&1 | tee /tmp/client-build.log
+        run: set -o pipefail; npm run build 2>&1 | tee /tmp/client-build.log
         continue-on-error: true
 
       - name: Run tests
         id: tests
         working-directory: auth-system/client
-        run: npm test --if-present -- --watchAll=false --passWithNoTests 2>&1 | tee /tmp/client-tests.log
+        shell: bash
+        run: set -o pipefail; npm test --if-present -- --watchAll=false --passWithNoTests 2>&1 | tee /tmp/client-tests.log
         continue-on-error: true
 
       - name: Upload error logs
