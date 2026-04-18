@@ -122,4 +122,4 @@ jobs:
             - Logic errors in the authentication flow
             - Missing input validation
             Post a concise summary as a PR comment. Be direct, skip praise.
-          claude_args: "--max-turns 3"
+          claude_args: "--max-turns 3 --allowedTools 'Read' --model claude-haiku-4-5 --bare"
