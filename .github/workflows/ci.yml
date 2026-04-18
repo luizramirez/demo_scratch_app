@@ -1,10 +1,16 @@
-name: CI
+name: metar_reader CI
 
 on:
   push:
     branches: [main]
+    paths:
+      - "metar_reader/**"
+      - ".github/workflows/ci.yml"
   pull_request:
     branches: [main]
+    paths:
+      - "metar_reader/**"
+      - ".github/workflows/ci.yml"
 
 env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
@@ -12,6 +18,9 @@ env:
 jobs:
   test:
     runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: metar_reader
     strategy:
       matrix:
         python-version: ["3.11", "3.12"]
