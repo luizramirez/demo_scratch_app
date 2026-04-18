@@ -117,7 +117,31 @@ pip install -r requirements-dev.txt
 pytest tests/ -v
 ```
 
-The test suite uses mocked API responses so it runs offline with no external calls.
+The suite contains **107 tests** organised into four layers:
+
+| Layer | What it covers |
+|---|---|
+| Route tests | HTTP responses for success, 404, 400, timeout, and connection errors |
+| Decoder unit tests | Every decoding helper tested in isolation (wind, clouds, visibility, weather codes, emoji) |
+| Scenario tests | Full mock METARs for realistic conditions: clear/calm, thunderstorm, snow, freezing fog, IFR overcast, gusting crosswind, partly cloudy |
+| Edge case tests | `None` fields, missing altimeter, zero wind, variable wind direction, unknown cloud codes |
+
+All tests use mocked API responses and run fully offline.
+
+---
+
+## CI / CD
+
+Every push and pull request to `main` runs the CI pipeline on Python 3.11 and 3.12:
+
+1. **Lint** — `flake8` checks `app.py` for style issues
+2. **Test** — `pytest` runs the full 107-test suite
+3. **AI error analysis** — if either step fails, the pipeline installs the Claude CLI and pipes the combined error output to Claude with a diagnostic prompt. A plain-English explanation and suggested fix appear directly in the GitHub Actions log under the **Claude AI diagnosis** group.
+
+> **Required secret:** add `ANTHROPIC_API_KEY` to your repository under  
+> **Settings → Secrets and variables → Actions** for the AI analysis step to work.
+
+The pipeline targets Node.js 24 for GitHub Actions runners, keeping it compatible through the September 2026 Node 20 removal.
 
 ---
 
@@ -129,13 +153,13 @@ The test suite uses mocked API responses so it runs offline with no external cal
 ├── templates/
 │   └── index.html          # Frontend UI
 ├── tests/
-│   └── test_app.py         # Unit tests
+│   └── test_app.py         # 107 tests across four layers
 ├── conftest.py             # pytest path configuration
 ├── requirements.txt        # Runtime dependencies
-├── requirements-dev.txt    # Development/test dependencies
+├── requirements-dev.txt    # Development/test dependencies (pytest, flake8)
 └── .github/
     └── workflows/
-        └── ci.yml          # GitHub Actions CI pipeline
+        └── ci.yml          # CI pipeline with AI-assisted error analysis
 ```
 
 ---
